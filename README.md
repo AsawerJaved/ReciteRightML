@@ -3,17 +3,18 @@
 This project uses Mozilla's DeepSpeech speech-to-text engine to recognize and transcribe Quranic recitations in Arabic.
 
 ## Features
-- Real-time audio processing with Voice Activity Detection (VAD)
-- Accurate recognition of Quranic verses using a custom-trained DeepSpeech model
-- Intermediate results display during recognition
-- WAV file saving capability for recorded utterances
+-✅ Real-time audio processing and transcription
+-✅ Automatic comparison with actual Quranic verses
+-✅ Intermediate transcription display during recitation
+-✅ Save recordings as WAV files
+-✅ Support for microphone or pre-recorded .wav files
 
 ## Installation
 1. Clone this repository
 2. Install dependencies from requirements.txt <br/>
    ```pip install -r requirements.txt```
 3. Download the pre-trained model and scorer files (place them in the models directory)
-   - output_graph_imams_tusers_v2.pb (model)
+   - quran_model.pb (model)
    - quran.scorer (scorer)
 
 ## Usage
@@ -33,4 +34,4 @@ This project uses Mozilla's DeepSpeech speech-to-text engine to recognize and tr
      -r, --rate RATE            Input sample rate (default: 16000)
     ```
    ### Example: <br/>
-   ```python quran_recognition.py -m models/output_graph_imams_tusers_v2.pb -s models/quran.scorer -w recordings```
+   ```python quran_recognition.py -m models/quran_model.pb -s models/quran.scorer -w recordings```
