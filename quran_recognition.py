@@ -158,7 +158,7 @@ def main(ARGS):
     # Load DeepSpeech model
     if os.path.isdir(ARGS.model):
         model_dir = ARGS.model
-        ARGS.model = os.path.join(model_dir, 'output_graph_imams_tusers_v2.pb')
+        ARGS.model = os.path.join(model_dir, 'quran_model.pb')
         ARGS.scorer = os.path.join(model_dir, ARGS.scorer)
 
     print('Initializing model...')
@@ -252,19 +252,19 @@ if __name__ == '__main__':
                         help="Set aggressiveness of VAD: an integer between 0 and 3, 0 being the least aggressive about filtering out non-speech, 3 the most aggressive. Default: 3")
     parser.add_argument('--nospinner', action='store_true',
                         help="Disable spinner")
-    parser.add_argument('-w', '--savewav', default='C:/Users/user/Desktop/Downloads/RECITE/',
+    parser.add_argument('-w', '--savewav', 
                          help="Save .wav files of utterences to given directory")
     parser.add_argument('-f', '--file', 
                         help="Read from .wav file instead of microphone")
-    parser.add_argument('-m', '--model', default='C:/Users/user/Desktop/Downloads/RECITE/output_graph_imams_tusers_v2.pb',
+    parser.add_argument('-m', '--model', 
                         help="Path to the model (protocol buffer binary file, or entire directory containing all standard-named files for model)")
-    parser.add_argument('-s', '--scorer', default='C:/Users/user/Desktop/Downloads/RECITE/quran.scorer',
+    parser.add_argument('-s', '--scorer', 
                         help="Path to the external scorer file.")
     parser.add_argument('-d', '--device', type=int, default=None,
                         help="Device input index (Int) as listed by pyaudio.PyAudio.get_device_info_by_index(). If not provided, falls back to PyAudio.get_default_device().")
     parser.add_argument('-r', '--rate', type=int, default=DEFAULT_SAMPLE_RATE,
                         help=f"Input device sample rate. Default: {DEFAULT_SAMPLE_RATE}. Your device may require 44100.")
-    parser.add_argument('-a', '--actual_text', type=str, default='وَٱلسَّمَآءِ وَمَا بَنَىٰهَا',
+    parser.add_argument('-a', '--actual_text', type=str, 
                         help="The actual text to compare against the predicted text")
 
     ARGS = parser.parse_args()
