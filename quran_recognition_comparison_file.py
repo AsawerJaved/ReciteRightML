@@ -1,27 +1,25 @@
 '''
-DeepSpeech Audio Transcription (File & Mic)
-- Supports both microphone and WAV file input
+DeepSpeech Audio Transcription (File)
+- Supports WAV file input
 - Auto-resamples audio to 16kHz for DeepSpeech
 - Real-time partial transcription feedback
-- Saves recordings to WAV (optional)
-- Better error handling & cleanup
+- Quran-specific: Automatically loads and compares ayah from quran-uthmani.txt
+- Returns list of tuples in format (incorrect word, surah, ayah)
 '''
 
 import time, logging
 from datetime import datetime
-import threading, collections, queue, os, os.path
+import queue, os, wave
 import deepspeech
 import numpy as np
 import pyaudio
-import wave
 from halo import Halo
 from scipy import signal
+from TextComparator import *
 
 logging.basicConfig(level=20)
 
-class Audio(object):
-    """Streams raw audio from microphone or file. Data is received in a separate thread, and stored in a buffer."""
-
+class Audio:
     FORMAT = pyaudio.paInt16
     RATE_PROCESS = 16000
     CHANNELS = 1
@@ -68,8 +66,6 @@ class Audio(object):
         self.stream.start_stream()
 
     def resample(self, data, input_rate):
-        """Resamples audio data to target processing rate (16kHz)."""
-
         data16 = np.frombuffer(data, dtype=np.int16)
         if len(data16) == 0:
             return b''
@@ -79,8 +75,6 @@ class Audio(object):
         return resampled.tobytes()
 
     def read_resampled(self):
-        """Reads and resamples audio data from buffer."""
-
         raw_audio = self.read()
         if len(raw_audio) == 0:
             return b''
@@ -90,15 +84,11 @@ class Audio(object):
         return self.buffer_queue.get()
 
     def destroy(self):
-        """Releases audio resources and cleans up streams."""
-
         self.stream.stop_stream()
         self.stream.close()
         self.pa.terminate()
 
     def write_wav(self, filename, data):
-        """Saves audio data to WAV file."""
-
         logging.info("write wav %s", filename)
         wf = wave.open(filename, 'wb')
         wf.setnchannels(self.CHANNELS)
@@ -107,83 +97,94 @@ class Audio(object):
         wf.writeframes(data)
         wf.close()
 
+def load_quran_text(file_path):
+    quran = {}
+    with open(file_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            parts = line.strip().split('|')
+            if len(parts) == 3:
+                surah, ayah, text = int(parts[0]), int(parts[1]), parts[2]
+                quran[(surah, ayah)] = text
+    return quran
+
 def main(ARGS):
-    # Load DeepSpeech model
     if os.path.isdir(ARGS.model):
         model_dir = ARGS.model
         ARGS.model = os.path.join(model_dir, 'quran_model.pb')
         ARGS.scorer = os.path.join(model_dir, ARGS.scorer)
 
-    print('Initializing model...')
-    logging.info("ARGS.model: %s", ARGS.model)
     model = deepspeech.Model(ARGS.model)
     if ARGS.scorer:
-        logging.info("ARGS.scorer: %s", ARGS.scorer)
         model.enableExternalScorer(ARGS.scorer)
 
-    # Start audio stream
+    quran = load_quran_text(ARGS.quran_file)
+    surah, ayah = ARGS.surah, ARGS.ayah
+    key = (surah, ayah)
+    if key in quran:
+        actual_text = quran[key]
+
+    comparator = TextComparator(actual_text)
+
     audio = Audio(file=ARGS.file)
     print("Listening (ctrl-C to exit)...")
 
     spinner = None if ARGS.nospinner else Halo(spinner='line')
     stream_context = model.createStream()
     wav_data = bytearray()
+    incorrect_words = []
 
     try:
         while True:
             frame = audio.read_resampled()
             if len(frame) == 0:
-                break  # End of file
+                break
 
             if spinner: spinner.start()
-
             stream_context.feedAudioContent(np.frombuffer(frame, dtype=np.int16))
 
             partial = stream_context.intermediateDecode().strip()
             if partial:
-                print(f"Partial: {partial}", end='\r')
+                new_word_completed = comparator.process_partial(partial)
+                if new_word_completed:
+                    incorrect = comparator.compare_latest_word()
+                    if incorrect:
+                        print(f"\nIncorrect word detected: {incorrect[0]}")
+                        incorrect_words.append((incorrect[0], surah, ayah))
 
-            if ARGS.savewav:
-                wav_data.extend(frame)
-
-        if spinner: spinner.stop()
-        text = stream_context.finishStream()
-        print(f"\nRecognized: {text}")
-
-        if ARGS.savewav and wav_data:
-            filename = datetime.now().strftime("savewav_%Y-%m-%d_%H-%M-%S.wav")
-            audio.write_wav(os.path.join(ARGS.savewav, filename), wav_data)
+                current_pred = comparator.get_current_prediction()
+                print(f"Partial: {current_pred}", end='\r')
 
     except KeyboardInterrupt:
-        print("\nInterrupted. Finalizing...")
-        if spinner:
-            spinner.stop()
-        text = stream_context.finishStream()
-        print(f"\nRecognized: {text}")
+        print("\nInterrupting...")
 
     finally:
-        audio.destroy()
+        if spinner: spinner.stop()
+        final_text = stream_context.finishStream()
+        last_word_completed = comparator.process_partial(final_text + ' ')
+        if last_word_completed:
+            incorrect = comparator.compare_latest_word()
+            if incorrect:
+                print(f"Incorrect word detected: {incorrect[0]}")
+                incorrect_words.append((incorrect[0], surah, ayah))
+
+        print(f"\nAyah ({surah},{ayah}): {final_text}")
+        print(f"Incorrect words: {incorrect_words}")
+        audio.destroy()        
         print("Processing complete.")
 
 if __name__ == '__main__':
     DEFAULT_SAMPLE_RATE = 44100
 
     import argparse
-    parser = argparse.ArgumentParser(description="Stream from mic or audio file")
-    parser.add_argument('--nospinner', action='store_true',
-                        help="Disable spinner")
-    parser.add_argument('-w', '--savewav',
-                         help="Save .wav file of the stream")
-    parser.add_argument('-f', '--file', 
-                        help="WAV file to read instead of microphone")
-    parser.add_argument('-m', '--model', 
-                        help="Path to model folder or model .pb file")
-    parser.add_argument('-s', '--scorer', 
-                        help="Path to scorer file")
-    parser.add_argument('-r', '--rate', type=int, default=DEFAULT_SAMPLE_RATE,
-                        help=f"Input device sample rate (default: {DEFAULT_SAMPLE_RATE})")
+    parser = argparse.ArgumentParser(description="Real Time Recitation Recognition and Mistake Detection from Audio File")
+    parser.add_argument('--nospinner', action='store_true', help="Disable spinner")
+    parser.add_argument('-f', '--file', help="WAV file to read from")
+    parser.add_argument('-m', '--model', help="Path to model folder")
+    parser.add_argument('-s', '--scorer', help="Path to scorer file")
+    parser.add_argument('-r', '--rate', type=int, default=DEFAULT_SAMPLE_RATE, help=f"Input device sample rate (default: {DEFAULT_SAMPLE_RATE})")
+    parser.add_argument('--quran_file', help="Path to Quran text file")
+    parser.add_argument('--surah', type=int, default=78, help="Surah number")
+    parser.add_argument('--ayah', type=int, default=1, help="Ayah number")
 
     ARGS = parser.parse_args()
-    if ARGS.savewav:
-        os.makedirs(ARGS.savewav, exist_ok=True)
     main(ARGS)
