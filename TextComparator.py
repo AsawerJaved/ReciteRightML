@@ -44,11 +44,11 @@ class TextComparator:
         # Get the index of the last complete word
         last_word_index = len(self.last_complete_words) - 1
         
-        # # Check if we have an actual word at this position
-        # if last_word_index >= len(self.actual_words):
-        #     extra_word = self.last_complete_words[last_word_index]
-        #     self.incorrect_words.add(f"[Extra: {extra_word}]")
-        #     return [extra_word]
+        # Check if we have an actual word at this position
+        if last_word_index >= len(self.actual_words):
+            extra_word = self.last_complete_words[last_word_index]
+            self.incorrect_words.add(f"[Extra: {extra_word}]")
+            return [extra_word]
         
         actual_word = self.normalize_word(self.actual_words[last_word_index])
         predicted_word = self.normalize_word(self.last_complete_words[last_word_index])
