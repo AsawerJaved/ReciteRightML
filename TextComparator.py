@@ -60,5 +60,5 @@ class TextComparator:
             self.last_word = True
 
         if sim < 0.75:
-            return [actual_word]
-        return []
+            return [True, actual_word]
+        return [False, actual_word]

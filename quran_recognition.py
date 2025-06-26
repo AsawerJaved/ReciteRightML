@@ -7,7 +7,8 @@ DeepSpeech Audio Transcription (File)
 - Returns list of tuples in format (incorrect word, surah, ayah)
 '''
 
-import logging
+import time, logging
+from datetime import datetime
 import queue, os, wave
 import deepspeech
 import numpy as np
@@ -142,7 +143,9 @@ def main(ARGS):
 
     spinner = None if ARGS.nospinner else Halo(spinner='line')
     stream_context = model.createStream()
+    wav_data = bytearray()
     incorrect_words = []
+    total_words = 0
 
     last_partial = ""
     same_partial_count = 0
@@ -165,18 +168,22 @@ def main(ARGS):
                     if same_partial_count >= max_same_count:
                         word_completed = comparator.process_partial(partial + ' ')
                         if word_completed:
-                            incorrect = comparator.compare_latest_word()
-                            if incorrect:
-                                incorrect_words.append((incorrect[0], surah, ayah))
+                            result = comparator.compare_latest_word()
+                            if result[0]:
+                                print(f"\nIncorrect word detected: {result[1]}")
+                                incorrect_words.append((result[1], surah, ayah))
+                            else:
+                                print("correct: ", result[1], surah, ayah)
                             print(f"\nAyah ({surah}, {ayah}): {partial}")
                             print(f"Incorrect words: {incorrect_words}")
-                            incorrect_words.clear()
+
+                            total_words += len(comparator.actual_words)
 
                             actual_text, new_surah, new_ayah = get_next_ayah(surah, ayah + 1)
                             if not actual_text:
                                 print("\nNo next ayah/surah.")
                                 break
-
+                            
                             surah, ayah = new_surah, new_ayah
                             comparator = TextComparator(actual_text)
                             stream_context = model.createStream()
@@ -185,9 +192,12 @@ def main(ARGS):
                 else:
                     word_completed = comparator.process_partial(partial)
                     if word_completed:
-                        incorrect = comparator.compare_latest_word()
-                        if incorrect:
-                            incorrect_words.append((incorrect[0], surah, ayah))
+                        result = comparator.compare_latest_word()
+                        if result[0]:
+                            print(f"\nIncorrect word detected: {result[1]}")
+                            incorrect_words.append((result[1], surah, ayah))
+                        else:
+                            print("correct: ", result[1], surah, ayah)
 
     except KeyboardInterrupt:
         print("\nInterrupting...")
@@ -195,14 +205,19 @@ def main(ARGS):
     finally:
         if spinner: spinner.stop()
         final_text = stream_context.finishStream()
-        last_word_completed = comparator.process_partial(final_text + ' ')
-        if last_word_completed:
-            incorrect = comparator.compare_latest_word()
-            if incorrect:
-                incorrect_words.append((incorrect[0], surah, ayah))
+        if final_text:
+            last_word_completed = comparator.process_partial(final_text + ' ')
+            if last_word_completed:
+                result = comparator.compare_latest_word()
+                if result[0]:
+                    print(f"Incorrect word detected: {result[1]}")
+                    incorrect_words.append((result[1], surah, ayah))
+                else:
+                    print("correct: ", result[1], surah, ayah)
 
-        print(f"\nAyah ({surah}, {ayah}): {final_text}")
+            print(f"\nAyah ({surah}, {ayah}): {final_text}")
         print(f"Incorrect words: {incorrect_words}")
+        print(f"Progress rate: {(total_words - len(incorrect_words)) / total_words * 100:.0f}%")
         audio.destroy()        
         print("Processing complete.")
 

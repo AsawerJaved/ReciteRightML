@@ -81,6 +81,8 @@ async def transcribe_quran(websocket: WebSocket, surah: int, ayah: int):
     last_partial = ""
     same_partial_count = 0
     max_same_count = 25
+    total_words = 0
+    incorrect_words = []
 
     try:
         while True:
@@ -99,13 +101,22 @@ async def transcribe_quran(websocket: WebSocket, surah: int, ayah: int):
                     if same_partial_count >= max_same_count:
                         word_completed = comparator.process_partial(partial + ' ')
                         if word_completed:
-                            incorrect = comparator.compare_latest_word()
-                            if incorrect:
+                            result = comparator.compare_latest_word()
+                            if result[0]:
                                 await websocket.send_json({
-                                    "incorrect_word": incorrect[0],
+                                    "incorrect_word": result[1],
                                     "surah": surah,
                                     "ayah": ayah
                                 })
+                                incorrect_words.append((result[1], surah, ayah))
+                            else:
+                                await websocket.send_json({
+                                    "correct_word": result[1],
+                                    "surah": surah,
+                                    "ayah": ayah
+                                })
+
+                            total_words += len(comparator.actual_words)
                             actual_text, new_surah, new_ayah = get_next_ayah(surah, ayah + 1)
                             if actual_text:
                                 comparator = TextComparator(actual_text)
@@ -124,10 +135,17 @@ async def transcribe_quran(websocket: WebSocket, surah: int, ayah: int):
                 else:
                     word_completed = comparator.process_partial(partial)
                     if word_completed:
-                        incorrect = comparator.compare_latest_word()
-                        if incorrect:
+                        result = comparator.compare_latest_word()
+                        if result[0]:
                             await websocket.send_json({
-                                "incorrect_word": incorrect[0],
+                                "incorrect_word": result[1],
+                                "surah": surah,
+                                "ayah": ayah
+                            })
+                            incorrect_words.append((result[1], surah, ayah))
+                        else:
+                            await websocket.send_json({
+                                "correct_word": result[1],
                                 "surah": surah,
                                 "ayah": ayah
                             })
@@ -137,6 +155,14 @@ async def transcribe_quran(websocket: WebSocket, surah: int, ayah: int):
 
         final_text = stream.finishStream()
         print(f"Final: {final_text}")
+
+        await websocket.send_json({
+            "summary": {
+                "final_transcription": final_text,
+                "progress_rate": f"{(total_words - len(incorrect_words)) / total_words * 100:.0f}%" if total_words > 0 else "0%",
+                "incorrect_words": incorrect_words
+            }
+        })
 
         filename = f"{SAVE_AUDIO_DIR}/session_{int(time.time())}.wav"
         with wave.open(filename, 'wb') as wf:
