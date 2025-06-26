@@ -101,7 +101,7 @@ async def transcribe_quran(websocket: WebSocket, surah: int, ayah: int):
                     if same_partial_count >= max_same_count:
                         word_completed = comparator.process_partial(partial + ' ')
                         if word_completed:
-                            result = comparator.compare_latest_word()
+                            result = comparator.compare_word()
                             if result[0]:
                                 await websocket.send_json({
                                     "incorrect_word": result[1],
@@ -135,7 +135,7 @@ async def transcribe_quran(websocket: WebSocket, surah: int, ayah: int):
                 else:
                     word_completed = comparator.process_partial(partial)
                     if word_completed:
-                        result = comparator.compare_latest_word()
+                        result = comparator.compare_word()
                         if result[0]:
                             await websocket.send_json({
                                 "incorrect_word": result[1],

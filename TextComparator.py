@@ -5,6 +5,7 @@ class TextComparator:
         self.last_complete_words = []  # To track complete words in prediction
         self.current_partial = ""  # To track the current incomplete word
         self.last_word = False
+        self.index = 0
     
     def normalize_word(self, word):
         """Normalize word by removing diacritics only"""
@@ -27,38 +28,33 @@ class TextComparator:
                 self.current_partial = words[-1]
             return False
     
-    def get_current_prediction(self):
-        """Get the full current prediction (complete words + current partial)"""
-        return ' '.join(self.last_complete_words + [self.current_partial]) if self.current_partial else ' '.join(self.last_complete_words)
-    
     def similarity(self, a, b):
         """Check the similarity ratio between words and a & b"""
         from difflib import SequenceMatcher
         return SequenceMatcher(None, a, b).ratio()
 
-    def compare_latest_word(self):
-        """Compare the last complete word with actual text"""
+    def compare_word(self):
+        """Compare the predicted word with actual text"""
         if not self.last_complete_words:
             return []
-        
-        # Get the index of the last complete word
-        last_word_index = len(self.last_complete_words) - 1
 
         # Check if all words compared
         if len(self.last_complete_words) > len(self.actual_words):
             self.last_word = False
             return []
         
-        actual_word = self.actual_words[last_word_index]
-        predicted_word = self.last_complete_words[last_word_index]
+        actual_word = self.actual_words[self.index]
+        predicted_word = self.last_complete_words[self.index]
+        self.index += 1
         
         # Similarity check
         sim = self.similarity(self.normalize_word(predicted_word), self.normalize_word(actual_word))
+        print(f"\nsimilarity {actual_word}, {predicted_word} = ", sim)
 
         # If its seconds last word, flag for upcoming last word as TRUE 
         if len(self.last_complete_words) == len(self.actual_words) - 1:
             self.last_word = True
 
-        if sim < 0.75:
+        if sim < 0.70:
             return [True, actual_word]
         return [False, actual_word]

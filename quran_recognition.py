@@ -168,7 +168,7 @@ def main(ARGS):
                     if same_partial_count >= max_same_count:
                         word_completed = comparator.process_partial(partial + ' ')
                         if word_completed:
-                            result = comparator.compare_latest_word()
+                            result = comparator.compare_word()
                             if result[0]:
                                 print(f"\nIncorrect word detected: {result[1]}")
                                 incorrect_words.append((result[1], surah, ayah))
@@ -192,7 +192,7 @@ def main(ARGS):
                 else:
                     word_completed = comparator.process_partial(partial)
                     if word_completed:
-                        result = comparator.compare_latest_word()
+                        result = comparator.compare_word()
                         if result[0]:
                             print(f"\nIncorrect word detected: {result[1]}")
                             incorrect_words.append((result[1], surah, ayah))
@@ -208,7 +208,7 @@ def main(ARGS):
         if final_text:
             last_word_completed = comparator.process_partial(final_text + ' ')
             if last_word_completed:
-                result = comparator.compare_latest_word()
+                result = comparator.compare_word()
                 if result[0]:
                     print(f"Incorrect word detected: {result[1]}")
                     incorrect_words.append((result[1], surah, ayah))
