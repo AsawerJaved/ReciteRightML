@@ -23,9 +23,9 @@ if SCORER_PATH:
     ds_model.enableExternalScorer(SCORER_PATH)
 
 
-def load_quran_text(path):
+def load_quran_text(file_path):
     quran = {}
-    with open(path, 'r', encoding='utf-8') as f:
+    with open(file_path, 'r', encoding='utf-8') as f:
         for line in f:
             parts = line.strip().split('|')
             if len(parts) == 3:
@@ -33,9 +33,19 @@ def load_quran_text(path):
                 quran[(surah, ayah)] = text
     return quran
 
-
+def get_next_ayah(surah, ayah):
+    if (surah, ayah) in quran_texts:
+        return quran_texts[(surah, ayah)], surah, ayah
+    else:
+        # Move to next surah
+        surah += 1
+        ayah = 1
+        if (surah, ayah) in quran_texts:
+            return quran_texts[(surah, ayah)], surah, ayah
+        else:
+            return None, None, None
+        
 quran_texts = load_quran_text(QURAN_TEXT_PATH)
-
 
 def resample_audio(audio_bytes, input_rate):
     audio = np.frombuffer(audio_bytes, dtype=np.int16)
@@ -62,12 +72,15 @@ async def transcribe_quran(websocket: WebSocket, surah: int, ayah: int):
     stream = ds_model.createStream()
     audio_frames = []
 
-    # Added only for debugging
     await websocket.send_json({
         "expected_text": expected_text,
         "surah": surah,
         "ayah": ayah
     })
+
+    last_partial = ""
+    same_partial_count = 0
+    max_same_count = 25
 
     try:
         while True:
@@ -80,15 +93,44 @@ async def transcribe_quran(websocket: WebSocket, surah: int, ayah: int):
             partial = stream.intermediateDecode().strip()
 
             if partial:
-                new_word_completed = comparator.process_partial(partial)
-                if new_word_completed:
-                    incorrect = comparator.compare_latest_word()
-                    if incorrect:
-                        await websocket.send_json({
-                            "incorrect_word": incorrect[0],
-                            "surah": surah,
-                            "ayah": ayah
-                        })
+                if comparator.last_word:
+                    same_partial_count = same_partial_count + 1 if partial == last_partial else 0
+                    last_partial = partial
+                    if same_partial_count >= max_same_count:
+                        word_completed = comparator.process_partial(partial + ' ')
+                        if word_completed:
+                            incorrect = comparator.compare_latest_word()
+                            if incorrect:
+                                await websocket.send_json({
+                                    "incorrect_word": incorrect[0],
+                                    "surah": surah,
+                                    "ayah": ayah
+                                })
+                            actual_text, new_surah, new_ayah = get_next_ayah(surah, ayah + 1)
+                            if actual_text:
+                                comparator = TextComparator(actual_text)
+                                stream = ds_model.createStream()
+                                surah, ayah = new_surah, new_ayah
+                                await websocket.send_json({
+                                    "expected_text": actual_text,
+                                    "surah": surah,
+                                    "ayah": ayah
+                                })
+                                same_partial_count = 0
+                                last_partial = ""
+                            else:
+                                await websocket.send_json({"info": "No next ayah found."})
+                                break
+                else:
+                    word_completed = comparator.process_partial(partial)
+                    if word_completed:
+                        incorrect = comparator.compare_latest_word()
+                        if incorrect:
+                            await websocket.send_json({
+                                "incorrect_word": incorrect[0],
+                                "surah": surah,
+                                "ayah": ayah
+                            })
 
     except WebSocketDisconnect:
         print("Client disconnected")
@@ -96,7 +138,6 @@ async def transcribe_quran(websocket: WebSocket, surah: int, ayah: int):
         final_text = stream.finishStream()
         print(f"Final: {final_text}")
 
-        # Save audio and text for each session only for debugging
         filename = f"{SAVE_AUDIO_DIR}/session_{int(time.time())}.wav"
         with wave.open(filename, 'wb') as wf:
             wf.setnchannels(1)

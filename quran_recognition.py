@@ -7,8 +7,7 @@ DeepSpeech Audio Transcription (File)
 - Returns list of tuples in format (incorrect word, surah, ayah)
 '''
 
-import time, logging
-from datetime import datetime
+import logging
 import queue, os, wave
 import deepspeech
 import numpy as np
@@ -119,10 +118,23 @@ def main(ARGS):
 
     quran = load_quran_text(ARGS.quran_file)
     surah, ayah = ARGS.surah, ARGS.ayah
-    key = (surah, ayah)
-    if key in quran:
-        actual_text = quran[key]
 
+    def get_next_ayah(surah, ayah):
+        if (surah, ayah) in quran:
+            return quran[(surah, ayah)], surah, ayah
+        else:
+            # Move to next surah
+            surah += 1
+            ayah = 1
+            if (surah, ayah) in quran:
+                return quran[(surah, ayah)], surah, ayah
+            else:
+                return None, None, None
+
+    actual_text, surah, ayah = get_next_ayah(surah, ayah)
+    if not actual_text:
+        print("No ayah found.")
+        return
     comparator = TextComparator(actual_text)
 
     audio = Audio(file=ARGS.file)
@@ -130,8 +142,11 @@ def main(ARGS):
 
     spinner = None if ARGS.nospinner else Halo(spinner='line')
     stream_context = model.createStream()
-    wav_data = bytearray()
     incorrect_words = []
+
+    last_partial = ""
+    same_partial_count = 0
+    max_same_count = 25  # number of consecutive times partial is unchanged
 
     try:
         while True:
@@ -144,15 +159,35 @@ def main(ARGS):
 
             partial = stream_context.intermediateDecode().strip()
             if partial:
-                new_word_completed = comparator.process_partial(partial)
-                if new_word_completed:
-                    incorrect = comparator.compare_latest_word()
-                    if incorrect:
-                        print(f"\nIncorrect word detected: {incorrect[0]}")
-                        incorrect_words.append((incorrect[0], surah, ayah))
+                if comparator.last_word:
+                    same_partial_count = same_partial_count + 1 if partial == last_partial else 0
+                    last_partial = partial
+                    if same_partial_count >= max_same_count:
+                        word_completed = comparator.process_partial(partial + ' ')
+                        if word_completed:
+                            incorrect = comparator.compare_latest_word()
+                            if incorrect:
+                                incorrect_words.append((incorrect[0], surah, ayah))
+                            print(f"\nAyah ({surah}, {ayah}): {partial}")
+                            print(f"Incorrect words: {incorrect_words}")
+                            incorrect_words.clear()
 
-                current_pred = comparator.get_current_prediction()
-                print(f"Partial: {current_pred}", end='\r')
+                            actual_text, new_surah, new_ayah = get_next_ayah(surah, ayah + 1)
+                            if not actual_text:
+                                print("\nNo next ayah/surah.")
+                                break
+
+                            surah, ayah = new_surah, new_ayah
+                            comparator = TextComparator(actual_text)
+                            stream_context = model.createStream()
+                            same_partial_count = 0
+                            last_partial = ""
+                else:
+                    word_completed = comparator.process_partial(partial)
+                    if word_completed:
+                        incorrect = comparator.compare_latest_word()
+                        if incorrect:
+                            incorrect_words.append((incorrect[0], surah, ayah))
 
     except KeyboardInterrupt:
         print("\nInterrupting...")
@@ -164,16 +199,15 @@ def main(ARGS):
         if last_word_completed:
             incorrect = comparator.compare_latest_word()
             if incorrect:
-                print(f"Incorrect word detected: {incorrect[0]}")
                 incorrect_words.append((incorrect[0], surah, ayah))
 
-        print(f"\nAyah ({surah},{ayah}): {final_text}")
+        print(f"\nAyah ({surah}, {ayah}): {final_text}")
         print(f"Incorrect words: {incorrect_words}")
         audio.destroy()        
         print("Processing complete.")
 
 if __name__ == '__main__':
-    DEFAULT_SAMPLE_RATE = 44100
+    DEFAULT_SAMPLE_RATE = 16000
 
     import argparse
     parser = argparse.ArgumentParser(description="Real Time Recitation Recognition and Mistake Detection from Audio File")
@@ -181,7 +215,7 @@ if __name__ == '__main__':
     parser.add_argument('-f', '--file', help="WAV file to read from")
     parser.add_argument('-m', '--model', help="Path to model folder")
     parser.add_argument('-s', '--scorer', help="Path to scorer file")
-    parser.add_argument('-r', '--rate', type=int, default=DEFAULT_SAMPLE_RATE, help=f"Input device sample rate (default: {DEFAULT_SAMPLE_RATE})")
+    parser.add_argument('-r', '--rate', type=int, default=DEFAULT_SAMPLE_RATE, help="Input device sample rate")
     parser.add_argument('--quran_file', help="Path to Quran text file")
     parser.add_argument('--surah', type=int, default=78, help="Surah number")
     parser.add_argument('--ayah', type=int, default=1, help="Ayah number")
