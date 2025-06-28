@@ -55,7 +55,7 @@ quran_texts = load_quran_text(QURAN_TEXT_PATH)
 # MongoDB setup
 client = AsyncIOMotorClient("mongodb://localhost:27017")
 db = client["recite-right"]
-session_collection = db["recitation_session"]
+session_collection = db["recitationsessions"]
 
 
 def resample_audio(audio_bytes, input_rate):
