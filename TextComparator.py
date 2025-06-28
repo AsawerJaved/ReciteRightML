@@ -1,3 +1,5 @@
+# old code (working)
+
 class TextComparator:
     def __init__(self, actual_text):
         self.original_actual = actual_text
@@ -28,6 +30,10 @@ class TextComparator:
                 self.current_partial = words[-1]
             return False
     
+    def get_current_prediction(self):
+        """Get the full current prediction (complete words + current partial)"""
+        return ' '.join(self.last_complete_words + [self.current_partial]) if self.current_partial else ' '.join(self.last_complete_words)
+    
     def similarity(self, a, b):
         """Check the similarity ratio between words and a & b"""
         from difflib import SequenceMatcher
@@ -36,12 +42,12 @@ class TextComparator:
     def compare_word(self):
         """Compare the predicted word with actual text"""
         if not self.last_complete_words:
-            return []
+            return
 
         # Check if all words compared
         if len(self.last_complete_words) > len(self.actual_words):
             self.last_word = False
-            return []
+            return 
         
         actual_word = self.actual_words[self.index]
         predicted_word = self.last_complete_words[self.index]
@@ -49,12 +55,12 @@ class TextComparator:
         
         # Similarity check
         sim = self.similarity(self.normalize_word(predicted_word), self.normalize_word(actual_word))
-        print(f"\nsimilarity {actual_word}, {predicted_word} = ", sim)
+        # print(f"\nsimilarity {actual_word}, {predicted_word} = ", sim)
 
         # If its seconds last word, flag for upcoming last word as TRUE 
         if len(self.last_complete_words) == len(self.actual_words) - 1:
             self.last_word = True
 
-        if sim < 0.70:
-            return [True, actual_word]
-        return [False, actual_word]
+        if sim < 0.50:
+            return actual_word
+        return 
